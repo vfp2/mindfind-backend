@@ -1,7 +1,5 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const moment = require('moment');
-const prettyBytes = require('pretty-bytes');
 const math = require('mathjs');
 const express = require('express');
 const { url } = require('inspector');
@@ -128,9 +126,9 @@ app.get('/api/get/url', async (req, res) => {
 
   var result = {
     searchInformation: {
-      formattedTotalResults: allUrlResponses.length,
-      formattedTotalSizeScanned: prettyBytes(totalBytesScanned),
-      formattedSearchTime: moment.utc(totalMillisTaken).format('HH:mm:ss:SSS')
+      totalResults: allUrlResponses.length,
+      totalBytesScanned: totalBytesScanned,
+      totalMillisTaken: totalMillisTaken
     },  
     items: items
   };
