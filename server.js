@@ -215,13 +215,14 @@ app.get('/api/get/searchterms', async (req, res) => {
       indxs.push(indx);
     });
 
-    res.send({indicies: indxs,
-        words: [
-          words[indxs[0]],
-          words[indxs[1]],
-          words[indxs[2]],
-      ]
-    });
+    res.redirect(`https://google.com/search?q=${words[indxs[0]]}%20${words[indxs[1]]}%20${words[indxs[2]]}`);
+    // res.send({indicies: indxs,
+    //     words: [
+    //       words[indxs[0]],
+    //       words[indxs[1]],
+    //       words[indxs[2]],
+    //   ]
+    // });
   })).catch(error => {
     console.log(error);
     res.send(error);
