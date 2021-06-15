@@ -11,6 +11,7 @@ const AthenaExpress = require("athena-express"),
 		secretAccessKey: ""
 	};
   aws.config.update(awsCredentials);
+const bitarray = require('node-bitarray');
 
 const app = express()
 const port = 3945
@@ -21,14 +22,16 @@ const athenaExpressConfig = {
 };
 const athenaExpress = new AthenaExpress(athenaExpressConfig);
 const athenaDBName = "ccindex";
-const medFarmApiUrl = 'http://medfarm.fp2.dev:3333/api/randuniform?deviceId=QWR4E004';
-// const medFarmApiUrl = 'https://entronet.fp2.dev/api/randuniform?deviceId=QWR4E004';
+const medFarmUniformEndpoint = 'http://medfarm.fp2.dev:3333/api/randuniform?deviceId=QWR4E004';
+// const medFarmUniformEndpoint = 'https://entronet.fp2.dev/api/randuniform?deviceId=QWR4E004';
 const maxResultsPerPage = 10;
+
+const words = require('fs').readFileSync('words/1000words.txt', 'utf-8').toString().split("\n");
 
 app.get('/api/get/intent', async (req, res) => {
   // Get the searcher's intent
   axios
-    .all(Array.from({length: maxResultsPerPage}, _ => axios.get(medFarmApiUrl)))
+    .all(Array.from({length: maxResultsPerPage}, _ => axios.get(medFarmUniformEndpoint)))
     .then(axios.spread((... responses) => {
       let randUniforms = [];
       responses.forEach((response) => {
@@ -133,6 +136,96 @@ app.get('/api/get/url', async (req, res) => {
     items: items
   };
   res.send(result);
+});
+
+app.get('/api/get/searchterms', async (req, res) => {
+  // QWR4Exxx devices are 101x amplified @ 100 KHz.
+  // Get 65,536 bits (8,192 bytes) of entropy, ~0.66 seconds.
+  // 3 MEDs, 3 resulting search terms.
+  // N = 65,536 (2^16)
+  let N = 65536;
+  let stddev = math.sqrt(N);
+  let n = 4*stddev;
+  // n = 1024 (range of output integers)
+  var gets = [
+    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E001&length=${N/8}`, {responseType: 'arraybuffer'}),
+    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${N/8}`, {responseType: 'arraybuffer'}),
+    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E004&length=${N/8}`, {responseType: 'arraybuffer'})
+  ];
+
+  axios
+  .all(gets)
+  .then(axios.spread((... responses) => {
+    // Get the number of 1 bits detected by each generator
+    // ones ~= 32,768 (2^15)
+    let ones = [];
+    responses.forEach((response) => {
+      let numOnes = bitarray.fromBuffer(response.data).bitcount();
+      ones.push(numOnes);
+    });
+
+    // Calculate the terminal points' coordinates in each random walk
+    let cts = []; 
+    ones.forEach((numOnes) => {
+      // 𝐶𝑇 =(2 × 𝑜𝑛𝑒𝑠)−𝑁
+      let ct = (2 * numOnes) - N;
+      cts.push(ct);
+    });
+
+    // Calculate z-scores for each terminal coordinate
+    // standard deviation (SD) = √𝑁
+    let zscores = [];
+    cts.forEach((ct) => {
+      // 𝑧 − 𝑠𝑐𝑜𝑟𝑒𝑠 = (𝑥, 𝑦)/√𝑁
+      let z = ct / stddev;
+      zscores.push(z);
+    });
+
+    // Calculate the cumulative normal distribution probabilities (p) from each z-score
+    // (The z-scores of each coordinate can be converted to uniform variates by a simple inverse approximation.)
+    ps = [];
+    zscores.forEach((z) => {
+      //p.push(cdf(...));
+      
+      // constants
+      let a1 = 0.254829592;
+      let a2 = -0.284496736;
+      let a3 = 1.421413741;
+      let a4 = -1.453152027;
+      let a5 = 1.061405429;
+      let p = 0.3275911;
+          
+      // Save the sign of z
+      let sign = 1;
+      if (z < 0) {
+          sign = -1;
+      }
+      z = math.abs(z) / math.sqrt(2.0);
+          
+      // A&S formula 7.1.26
+      let t = 1.0 / (1.0 + p*z);
+      let y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t * math.exp(-z*z);
+
+      ps.push(0.5 * (1.0 + sign*y));
+    });
+
+    let indxs = [];
+    ps.forEach((p) => {
+      let indx = math.round(n * p);
+      indxs.push(indx);
+    });
+
+    res.send({indicies: indxs,
+        words: [
+          words[indxs[0]],
+          words[indxs[1]],
+          words[indxs[2]],
+      ]
+    });
+  })).catch(error => {
+    console.log(error);
+    res.send(error);
+  });
 });
 
 app.listen(port, () => {
