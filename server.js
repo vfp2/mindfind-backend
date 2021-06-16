@@ -26,7 +26,7 @@ const medFarmUniformEndpoint = 'http://medfarm.fp2.dev:3333/api/randuniform?devi
 // const medFarmUniformEndpoint = 'https://entronet.fp2.dev/api/randuniform?deviceId=QWR4E004';
 const maxResultsPerPage = 10;
 
-const words = require('fs').readFileSync('words/1000words.txt', 'utf-8').toString().split("\n");
+const words = require('fs').readFileSync('words/1024words.txt', 'utf-8').toString().split("\n");
 
 app.get('/api/get/intent', async (req, res) => {
   // Get the searcher's intent
