@@ -3,12 +3,13 @@ const cheerio = require('cheerio');
 const math = require('mathjs');
 const express = require('express');
 const { url } = require('inspector');
+const keys = require('./keys');
 const AthenaExpress = require("athena-express"),
 	aws = require("aws-sdk"),
 	awsCredentials = {
 		region: "us-east-1",
-		accessKeyId: "",
-		secretAccessKey: ""
+		accessKeyId: keys.awsAccessKeyId,
+		secretAccessKey: keys.awsSecretAccessKey
 	};
   aws.config.update(awsCredentials);
 const bitarray = require('node-bitarray');
