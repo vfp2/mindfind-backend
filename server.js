@@ -4,6 +4,7 @@ const math = require('mathjs');
 const express = require('express');
 const { url } = require('inspector');
 const keys = require('./keys');
+const crypto = require('crypto');
 const AthenaExpress = require("athena-express"),
 	aws = require("aws-sdk"),
 	awsCredentials = {
@@ -148,88 +149,114 @@ app.get('/api/get/searchterms', async (req, res) => {
   let stddev = math.sqrt(N);
   let n = 4*stddev;
   // n = 1024 (range of output integers)
-  var gets = [
-    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E001&length=${N/8}`, {responseType: 'arraybuffer'}),
-    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${N/8}`, {responseType: 'arraybuffer'}),
-    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E004&length=${N/8}`, {responseType: 'arraybuffer'}),
-    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4X003&length=${N/8}`, {responseType: 'arraybuffer'})
-  ];
 
-  axios
-  .all(gets)
-  .then(axios.spread((... responses) => {
+  postProcess = (... responses) => {
     // Get the number of 1 bits detected by each generator
-    // ones ~= 32,768 (2^15)
-    let ones = [];
-    responses.forEach((response) => {
-      let numOnes = bitarray.fromBuffer(response.data).bitcount();
-      ones.push(numOnes);
+      // ones ~= 32,768 (2^15)
+      let ones = [];
+      responses.forEach((response) => {
+        let numOnes = bitarray.fromBuffer(response.data).bitcount();
+        ones.push(numOnes);
+      });
+
+      // Calculate the terminal points' coordinates in each random walk
+      let cts = []; 
+      ones.forEach((numOnes) => {
+        // 𝐶𝑇 =(2 × 𝑜𝑛𝑒𝑠)−𝑁
+        let ct = (2 * numOnes) - N;
+        cts.push(ct);
+      });
+
+      // Calculate z-scores for each terminal coordinate
+      // standard deviation (SD) = √𝑁
+      let zscores = [];
+      cts.forEach((ct) => {
+        // 𝑧 − 𝑠𝑐𝑜𝑟𝑒𝑠 = (𝑥, 𝑦)/√𝑁
+        let z = ct / stddev;
+        zscores.push(z);
+      });
+
+      // Calculate the cumulative normal distribution probabilities (p) from each z-score
+      // (The z-scores of each coordinate can be converted to uniform variates by a simple inverse approximation.)
+      ps = [];
+      zscores.forEach((z) => {
+        let x = z;
+
+        // constants
+        let c1 = 2.506628275;
+        let c2 = 0.31938153;
+        let c3 = -0.356563782;
+        let c4 = 1.781477937;
+        let c5 = -1.821255978;
+        let c6 = 1.330274429;
+        let c7 = 0.2316419;
+
+        // Save the sign of x
+        let sign = 1;
+        if (x < 0) {
+            sign = -1;
+        }
+
+        let t = 1 + c7 * sign * x;
+        let y = 1/ t;
+        let cdf = 0.5 + sign * (0.5 - (c2 + (c6 + c5*t + c4*math.pow(t, 2) + c3*math.pow(t, 3) )/ Math.pow(t, 4)) / (c1*math.exp(0.5*x*x) * t));
+
+        ps.push(cdf);
+      });
+
+      let indxs = [];
+      ps.forEach((p) => {
+        let indx = math.round(n * p);
+        indxs.push(indx);
+      });
+
+      res.redirect(`https://google.com/search?q=${words[indxs[0]]}%20${words[indxs[1]]}%20${words[indxs[2]]}%20${words[indxs[3]]}`);
+      // res.send({indicies: indxs,
+      //     words: [
+      //       words[indxs[0]],
+      //       words[indxs[1]],
+      //       words[indxs[2]],
+      //       words[indxs[3]]
+      //   ]
+      // });
+  };
+
+  if (req.query.pseudo) {
+    const buf1 = Buffer.alloc(N/8);
+    crypto.randomFill(buf1, (err, buf) => {
+      const buf2 = Buffer.alloc(N/8);
+      crypto.randomFill(buf2, (err, buf) => {
+        const buf3 = Buffer.alloc(N/8);
+        crypto.randomFill(buf3, (err, buf) => {
+          const buf4 = Buffer.alloc(N/8);
+          crypto.randomFill(buf4, (err, buf) => {
+            var responses = [
+              { data: buf1},
+              { data: buf2},
+              { data: buf3},
+              { data: buf4}
+            ];
+            postProcess(responses[0], responses[1], responses[2], responses[3]);
+          });
+        });
+      });
     });
-
-    // Calculate the terminal points' coordinates in each random walk
-    let cts = []; 
-    ones.forEach((numOnes) => {
-      // 𝐶𝑇 =(2 × 𝑜𝑛𝑒𝑠)−𝑁
-      let ct = (2 * numOnes) - N;
-      cts.push(ct);
+  } else {
+    var gets = [
+      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E001&length=${N/8}`, {responseType: 'arraybuffer'}),
+      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${N/8}`, {responseType: 'arraybuffer'}),
+      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E004&length=${N/8}`, {responseType: 'arraybuffer'}),
+      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4X003&length=${N/8}`, {responseType: 'arraybuffer'})
+    ];
+    axios
+    .all(gets)
+    .then(axios.spread((... responses) => {
+      postProcess(...responses);
+    })).catch(error => {
+      console.log(error);
+      res.send(error);
     });
-
-    // Calculate z-scores for each terminal coordinate
-    // standard deviation (SD) = √𝑁
-    let zscores = [];
-    cts.forEach((ct) => {
-      // 𝑧 − 𝑠𝑐𝑜𝑟𝑒𝑠 = (𝑥, 𝑦)/√𝑁
-      let z = ct / stddev;
-      zscores.push(z);
-    });
-
-    // Calculate the cumulative normal distribution probabilities (p) from each z-score
-    // (The z-scores of each coordinate can be converted to uniform variates by a simple inverse approximation.)
-    ps = [];
-    zscores.forEach((z) => {
-      let x = z;
-
-      // constants
-      let c1 = 2.506628275;
-      let c2 = 0.31938153;
-      let c3 = -0.356563782;
-      let c4 = 1.781477937;
-      let c5 = -1.821255978;
-      let c6 = 1.330274429;
-      let c7 = 0.2316419;
-
-      // Save the sign of x
-      let sign = 1;
-      if (x < 0) {
-          sign = -1;
-      }
-
-      let t = 1 + c7 * sign * x;
-      let y = 1/ t;
-      let cdf = 0.5 + sign * (0.5 - (c2 + (c6 + c5*t + c4*math.pow(t, 2) + c3*math.pow(t, 3) )/ Math.pow(t, 4)) / (c1*math.exp(0.5*x*x) * t));
-
-      ps.push(cdf);
-    });
-
-    let indxs = [];
-    ps.forEach((p) => {
-      let indx = math.round(n * p);
-      indxs.push(indx);
-    });
-
-    res.redirect(`https://google.com/search?q=${words[indxs[0]]}%20${words[indxs[1]]}%20${words[indxs[2]]}%20${words[indxs[3]]}`);
-    // res.send({indicies: indxs,
-    //     words: [
-    //       words[indxs[0]],
-    //       words[indxs[1]],
-    //       words[indxs[2]],
-    //       words[indxs[3]]
-    //   ]
-    // });
-  })).catch(error => {
-    console.log(error);
-    res.send(error);
-  });
+  }
 });
 
 app.listen(port, () => {
