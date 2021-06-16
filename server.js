@@ -151,7 +151,8 @@ app.get('/api/get/searchterms', async (req, res) => {
   var gets = [
     axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E001&length=${N/8}`, {responseType: 'arraybuffer'}),
     axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${N/8}`, {responseType: 'arraybuffer'}),
-    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E004&length=${N/8}`, {responseType: 'arraybuffer'})
+    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E004&length=${N/8}`, {responseType: 'arraybuffer'}),
+    axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4X003&length=${N/8}`, {responseType: 'arraybuffer'})
   ];
 
   axios
@@ -216,12 +217,13 @@ app.get('/api/get/searchterms', async (req, res) => {
       indxs.push(indx);
     });
 
-    res.redirect(`https://google.com/search?q=${words[indxs[0]]}%20${words[indxs[1]]}%20${words[indxs[2]]}`);
+    res.redirect(`https://google.com/search?q=${words[indxs[0]]}%20${words[indxs[1]]}%20${words[indxs[2]]}%20${words[indxs[3]]}`);
     // res.send({indicies: indxs,
     //     words: [
     //       words[indxs[0]],
     //       words[indxs[1]],
     //       words[indxs[2]],
+    //       words[indxs[3]]
     //   ]
     // });
   })).catch(error => {
