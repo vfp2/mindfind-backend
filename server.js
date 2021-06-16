@@ -187,28 +187,28 @@ app.get('/api/get/searchterms', async (req, res) => {
     // (The z-scores of each coordinate can be converted to uniform variates by a simple inverse approximation.)
     ps = [];
     zscores.forEach((z) => {
-      //p.push(cdf(...));
-      
+      let x = z;
+
       // constants
-      let a1 = 0.254829592;
-      let a2 = -0.284496736;
-      let a3 = 1.421413741;
-      let a4 = -1.453152027;
-      let a5 = 1.061405429;
-      let p = 0.3275911;
-          
-      // Save the sign of z
+      let c1 = 2.506628275;
+      let c2 = 0.31938153;
+      let c3 = -0.356563782;
+      let c4 = 1.781477937;
+      let c5 = -1.821255978;
+      let c6 = 1.330274429;
+      let c7 = 0.2316419;
+
+      // Save the sign of x
       let sign = 1;
-      if (z < 0) {
+      if (x < 0) {
           sign = -1;
       }
-      z = math.abs(z) / math.sqrt(2.0);
-          
-      // A&S formula 7.1.26
-      let t = 1.0 / (1.0 + p*z);
-      let y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t * math.exp(-z*z);
 
-      ps.push(0.5 * (1.0 + sign*y));
+      let t = 1 + c7 * sign * x;
+      let y = 1/ t;
+      let cdf = 0.5 + sign * (0.5 - (c2 + (c6 + c5*t + c4*math.pow(t, 2) + c3*math.pow(t, 3) )/ Math.pow(t, 4)) / (c1*math.exp(0.5*x*x) * t));
+
+      ps.push(cdf);
     });
 
     let indxs = [];
