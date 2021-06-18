@@ -247,22 +247,23 @@ app.get('/api/get/searchterms', async (req, res) => {
   };
 
   if (req.query.pseudo) {
-    const buf1 = Buffer.alloc(N/8);
+    const buf1 = Buffer.alloc(entropyBytesLen);
     crypto.randomFill(buf1, (err, buf) => {
-      const buf2 = Buffer.alloc(N/8);
+      const buf2 = Buffer.alloc(entropyBytesLen);
       crypto.randomFill(buf2, (err, buf) => {
-        const buf3 = Buffer.alloc(N/8);
+        const buf3 = Buffer.alloc(entropyBytesLen);
         crypto.randomFill(buf3, (err, buf) => {
-          const buf4 = Buffer.alloc(N/8);
-          crypto.randomFill(buf4, (err, buf) => {
+          // const buf4 = Buffer.alloc(entropyBytesLen);
+          // crypto.randomFill(buf4, (err, buf) => {
             var responses = [
               { data: buf1},
               { data: buf2},
               { data: buf3},
-              { data: buf4}
+              // { data: buf4}
             ];
-            postProcess(responses[0], responses[1], responses[2], responses[3]);
-          });
+            postProcess(responses[0], responses[1], responses[2]);
+            // postProcess(responses[0], responses[1], responses[2], responses[3]);
+          // });
         });
       });
     });
