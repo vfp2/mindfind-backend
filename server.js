@@ -140,83 +140,108 @@ app.get('/api/get/url', async (req, res) => {
   res.send(result);
 });
 
+function linearize(x) {
+  // constants
+  let c1 = 2.506628275;
+  let c2 = 0.31938153;
+  let c3 = -0.356563782;
+  let c4 = 1.781477937;
+  let c5 = -1.821255978;
+  let c6 = 1.330274429;
+  let c7 = 0.2316419;
+
+  // Save the sign of x
+  let sign = 1;
+  if (x < 0) {
+      sign = -1;
+  }
+
+  let t = 1 + c7 * sign * x;
+  let cdf = 0.5 + sign * (0.5 - (c2 + (c6 + c5*t + c4*math.pow(t, 2) + c3*math.pow(t, 3) )/ Math.pow(t, 4)) / (c1*math.exp(0.5*x*x) * t));
+
+  return cdf;
+}
+
 app.get('/api/get/searchterms', async (req, res) => {
-  // QWR4Exxx devices are 101x amplified @ 100 KHz.
-  // Get 65,536 bits (8,192 bytes) of entropy, ~0.66 seconds.
-  // 3 MEDs, 3 resulting search terms.
-  // N = 65,536 (2^16)
-  let N = 65536;
+  let N = 16384;
+  let entropyBytesLen = N*2/8;
   let stddev = math.sqrt(N);
-  let n = 4*stddev;
-  // n = 1024 (range of output integers)
+  let mm = 32
 
   postProcess = (... responses) => {
     // Get the number of 1 bits detected by each generator
     // ones ~= 32,768 (2^15)
-    let ones = [];
+    let coarseOnes = [];
+    let fineOnes = [];
     responses.forEach((response) => {
-      let numOnes = bitarray.fromBuffer(response.data).bitcount();
-      ones.push(numOnes);
+      let bits = bitarray.fromBuffer(response.data);
+      let coarseNumOnes = 0;
+      let fineNumOnes = 0;
+      for (let i = 0; i < bits.length; i++) {
+        if (i % 2 == 0) {
+          if (bits.get(i) === 1) coarseNumOnes++;
+        } else {
+          if (bits.get(i) === 1) fineNumOnes++;
+        }
+      }
+      coarseOnes.push(coarseNumOnes);
+      fineOnes.push(fineNumOnes);
     });
 
     // Calculate the terminal points' coordinates in each random walk
-    let cts = []; 
-    ones.forEach((numOnes) => {
+    let coarseCts = [];
+    coarseOnes.forEach((numOnes) => {
       // 𝐶𝑇 =(2 × 𝑜𝑛𝑒𝑠)−𝑁
       let ct = (2 * numOnes) - N;
-      cts.push(ct);
+      coarseCts.push(ct);
+    });
+    let fineCts = [];
+    fineOnes.forEach((numOnes) => {
+      // 𝐶𝑇 =(2 × 𝑜𝑛𝑒𝑠)−𝑁
+      let ct = (2 * numOnes) - N;
+      fineCts.push(ct);
     });
 
     // Calculate z-scores for each terminal coordinate
     // standard deviation (SD) = √𝑁
-    let zscores = [];
-    cts.forEach((ct) => {
+    let coarseZscores = [];
+    coarseCts.forEach((ct) => {
       // 𝑧 − 𝑠𝑐𝑜𝑟𝑒𝑠 = (𝑥, 𝑦)/√𝑁
       let z = ct / stddev;
-      zscores.push(z);
+      coarseZscores.push(z);
+    });
+    let fineZscores = [];
+    fineCts.forEach((ct) => {
+      // 𝑧 − 𝑠𝑐𝑜𝑟𝑒𝑠 = (𝑥, 𝑦)/√𝑁
+      let z = ct / stddev;
+      fineZscores.push(z);
     });
 
     // Calculate the cumulative normal distribution probabilities (p) from each z-score
     // (The z-scores of each coordinate can be converted to uniform variates by a simple inverse approximation.)
-    ps = [];
-    zscores.forEach((z) => {
-      let x = z;
-
-      // constants
-      let c1 = 2.506628275;
-      let c2 = 0.31938153;
-      let c3 = -0.356563782;
-      let c4 = 1.781477937;
-      let c5 = -1.821255978;
-      let c6 = 1.330274429;
-      let c7 = 0.2316419;
-
-      // Save the sign of x
-      let sign = 1;
-      if (x < 0) {
-          sign = -1;
-      }
-
-      let t = 1 + c7 * sign * x;
-      let y = 1/ t;
-      let cdf = 0.5 + sign * (0.5 - (c2 + (c6 + c5*t + c4*math.pow(t, 2) + c3*math.pow(t, 3) )/ Math.pow(t, 4)) / (c1*math.exp(0.5*x*x) * t));
-
-      ps.push(cdf);
+    coarsePs = [];
+    coarseZscores.forEach((z) => {
+      coarsePs.push(linearize(z));
+    });
+    finePs = [];
+    fineZscores.forEach((z) => {
+      finePs.push(linearize(z));
     });
 
     let indxs = [];
-    ps.forEach((p) => {
-      let indx = math.round(n * p);
-      indxs.push(indx);
-    });
+    for (let i = 0; i < coarseOnes.length; i++) {
+      let linearizedProbability = (mm * math.floor(mm * coarsePs[i])) + math.floor(mm * finePs[i]);
+      indxs.push(linearizedProbability);
+    }
 
-    res.redirect(`https://google.com/search?q=${words[indxs[0]]}%20${words[indxs[1]]}%20${words[indxs[2]]}%20${words[indxs[3]]}`);
+    // res.redirect(`https://google.com/search?q=${words[indxs[0]]}%20${words[indxs[1]]}%20${words[indxs[2]]}%20${words[indxs[3]]}`);
+    res.redirect(`https://google.com/search?q=${words[indxs[0]]}%20${words[indxs[1]]}%20${words[indxs[2]]}`);
     // res.send({indicies: indxs,
     //     words: [
     //       words[indxs[0]],
     //       words[indxs[1]],
     //       words[indxs[2]],
-    //       words[indxs[3]]
+    //       // words[indxs[3]]
     //   ]
     // });
   };
@@ -243,10 +268,10 @@ app.get('/api/get/searchterms', async (req, res) => {
     });
   } else {
     var gets = [
-      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E001&length=${N/8}`, {responseType: 'arraybuffer'}),
-      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${N/8}`, {responseType: 'arraybuffer'}),
-      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E004&length=${N/8}`, {responseType: 'arraybuffer'}),
-      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4X003&length=${N/8}`, {responseType: 'arraybuffer'})
+      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E001&length=${entropyBytesLen}`, {responseType: 'arraybuffer'}),
+      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${entropyBytesLen}`, {responseType: 'arraybuffer'}),
+      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E004&length=${entropyBytesLen}`, {responseType: 'arraybuffer'}),
+      // axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4X003&length=${entropyBytesLen}`, {responseType: 'arraybuffer'})
     ];
     axios
     .all(gets)
