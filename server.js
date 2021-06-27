@@ -85,9 +85,6 @@ app.get('/api/get/url', async (req, res) => {
   .get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${entropyBytesLen}`, {responseType: 'arraybuffer'})
   .then(response => {
     let totalEntropy = bitarray.fromBuffer(response.data);
-    console.log("total num bits: " + totalEntropy.length);
-    console.log("total num ones: " + totalEntropy.bitcount());
-    console.log("N: " + N);
 
     // Bit at a time, count the number of 1 bits per stage
     let numOnesPerStage = new Array(numStages).fill(0);
