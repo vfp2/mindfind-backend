@@ -95,7 +95,6 @@ app.get('/api/get/url', async (req, res) => {
     for (let i = 0; i < totalEntropy.length - 1; i++) {
       if (totalEntropy.get(i) === 1) {
         numOnesPerStage[stage] = numOnesPerStage[stage] + 1; 
-        console.log(numOnesPerStage[stage]);
       }
       if (stage < numStages - 1) {
         stage++;
