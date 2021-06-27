@@ -70,74 +70,143 @@ app.get('/api/get/intent', async (req, res) => {
 });
 
 app.get('/api/get/url', async (req, res) => {
-  const getRandomUrl = async (intentScore) => {
-    // Get a random (but potentially - hopefully - mentally influenced!) URL from Common Crawl index on AWS Athena
-    let athenaResult = await athenaExpress.query({
-      sql: `SELECT url_host_name,url FROM "ccindex"."ccindex" TABLESAMPLE BERNOULLI(${intentScore}) WHERE crawl = 'CC-MAIN-2021-04' AND subset = 'warc' LIMIT 1`,
-      db: athenaDBName,
-      getStats: true 
-    });
+  // Implement Scott Wilber's multi-stage MMI index generator algorithm to get an index in the 3.4 billion
+  // Common Crawl's URL index of all crawled URLs on the web.
+  // https://forum.fp2.dev/t/collaborative-project-idea-mindfind-mental-google-search/62/17
 
-    // Get the URL's HTML
-    let title, description;
-    try {
-      let html = await axios.get(athenaResult.Items[0].url);
-      console.log(athenaResult.Items[0].url);
-      const $ = cheerio.load(html.data);
-      title = $('meta[property="og:title"]').attr('content') || $('title').text() || $('meta[name="title"]').attr('content')
-      console.log("Title:" + title);
-      description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content')
-      console.log("Description:" + description);
-      // const url = $('meta[property="og:url"]').attr('content')
-      // const site_name = $('meta[property="og:site_name"]').attr('content')
-      // const image = $('meta[property="og:image"]').attr('content') || $('meta[property="og:image:url"]').attr('content')
-      // const icon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href')
-      // const keywords = $('meta[property="og:keywords"]').attr('content') || $('meta[name="keywords"]').attr('content')
-      console.log("");
-    } catch (error) {
-      console.log(error);
+  let nl = 9; // Number of Lines multiplier
+  let N = 5185; // number of steps in a random walk per stage: (8 * nl)^2 +1 to make the number odd
+  let numStages = 10;
+  let entropyBytesLen = math.ceil((N * numStages)/8); // byte size of total number of MMI bits to get from the QRNG
+  let stddev = math.sqrt(N);
+  let resolution = 3401286407; // total number of crawled URLs to find an index in
+
+  axios
+  .get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${entropyBytesLen}`, {responseType: 'arraybuffer'})
+  .then(response => {
+    let totalEntropy = bitarray.fromBuffer(response.data);
+    console.log("total num bits: " + totalEntropy.length);
+    console.log("total num ones: " + totalEntropy.bitcount());
+    console.log("N: " + N);
+
+    // Bit at a time, count the number of 1 bits per stage
+    let numOnesPerStage = new Array(numStages).fill(0);
+    let stage = 0;
+    for (let i = 0; i < totalEntropy.length - 1; i++) {
+      if (totalEntropy.get(i) === 1) {
+        numOnesPerStage[stage] = numOnesPerStage[stage] + 1; 
+        console.log(numOnesPerStage[stage]);
+      }
+      if (stage < numStages - 1) {
+        stage++;
+      } else {
+        stage = 0;
+      }
     }
 
-    return {
-      entropy: req.query.intentScore,
-      url: athenaResult.Items[0].url,
-      hostname: athenaResult.Items[0].url_host_name,
-      millisTaken: athenaResult.TotalExecutionTimeInMillis,
-      bytesScanned: athenaResult.DataScannedInBytes,
-      metaTitle: title,
-      metaDescription: description,
-    };
-  }
+    ps = [];
+    for (let j = 0; j < numStages; j++) {
+      let numOnes = numOnesPerStage[j];
 
-  // Get all URLs 
-  var items = [];
-  var allUrlResponses = await Promise.all(Array.from({length: 1}, _ => getRandomUrl(req.query.intentScore)));
-  allUrlResponses.forEach((urlResponse) => {
-    items.push({
-      link: urlResponse.url,
-      title: urlResponse.metaTitle,
-      displayLink: urlResponse.hostname,
-      snippet: urlResponse.metaDescription
-    })
+      // Calculate the terminal points' coordinates in random walk
+      // 𝐶𝑇 =(2 × 𝑜𝑛𝑒𝑠)−𝑁
+      let ct = (2 * numOnes) - N;
+
+      // Calculate z-score for the terminal coordinate
+      // standard deviation (SD) = √𝑁
+      // 𝑧 − 𝑠𝑐𝑜𝑟𝑒𝑠 = (𝑥, 𝑦)/√𝑁
+      let z = ct / stddev;
+
+      // Calculate the cumulative normal distribution probabilities (p) from z-score
+      // (The z-scores of each coordinate can be converted to uniform variates by a simple inverse approximation.)
+      let p = linearize(z);
+      ps[j] = p;
+    }
+  
+    // Generate the index
+    let index = 0;
+    for (let k = 0, l = 9; k < numStages; k++, l--) {
+      index += math.pow(nl, l) * math.floor(nl * ps[k]);
+    }
+
+    // Interpolate
+    // interpolated index = Floor[3.464 x 10^9 * index/(nl^10)
+    let interpolatedIdx = math.floor(resolution * index/math.pow(nl, numStages));
+    console.log("interpolatedIdx: " + interpolatedIdx);
+    res.send({index: interpolatedIdx});
+  }).catch(error => {
+    console.log(error);
+    res.send(error);
   });
 
-  // Calculate time take/bytes scanned
-  var totalBytesScanned = 0;
-  var totalMillisTaken = 0;
-  allUrlResponses.forEach((urlResponse) => {
-    totalMillisTaken += urlResponse.millisTaken;
-    totalBytesScanned += urlResponse.bytesScanned;
-  });
+  // const getRandomUrl = async (intentScore) => {
+  //   // Get a random (but potentially - hopefully - mentally influenced!) URL from Common Crawl index on AWS Athena
+  //   let athenaResult = await athenaExpress.query({
+  //     sql: `SELECT url_host_name,url FROM "ccindex"."ccindex" TABLESAMPLE BERNOULLI(${intentScore}) WHERE crawl = 'CC-MAIN-2021-04' AND subset = 'warc' LIMIT 1`,
+  //     db: athenaDBName,
+  //     getStats: true 
+  //   });
 
-  var result = {
-    searchInformation: {
-      totalResults: allUrlResponses.length,
-      totalBytesScanned: totalBytesScanned,
-      totalMillisTaken: totalMillisTaken
-    },  
-    items: items
-  };
-  res.send(result);
+  //   // Get the URL's HTML
+  //   let title, description;
+  //   try {
+  //     let html = await axios.get(athenaResult.Items[0].url);
+  //     console.log(athenaResult.Items[0].url);
+  //     const $ = cheerio.load(html.data);
+  //     title = $('meta[property="og:title"]').attr('content') || $('title').text() || $('meta[name="title"]').attr('content')
+  //     console.log("Title:" + title);
+  //     description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content')
+  //     console.log("Description:" + description);
+  //     // const url = $('meta[property="og:url"]').attr('content')
+  //     // const site_name = $('meta[property="og:site_name"]').attr('content')
+  //     // const image = $('meta[property="og:image"]').attr('content') || $('meta[property="og:image:url"]').attr('content')
+  //     // const icon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href')
+  //     // const keywords = $('meta[property="og:keywords"]').attr('content') || $('meta[name="keywords"]').attr('content')
+  //     console.log("");
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+
+  //   return {
+  //     entropy: req.query.intentScore,
+  //     url: athenaResult.Items[0].url,
+  //     hostname: athenaResult.Items[0].url_host_name,
+  //     millisTaken: athenaResult.TotalExecutionTimeInMillis,
+  //     bytesScanned: athenaResult.DataScannedInBytes,
+  //     metaTitle: title,
+  //     metaDescription: description,
+  //   };
+  // }
+
+  // // Get all URLs 
+  // var items = [];
+  // var allUrlResponses = await Promise.all(Array.from({length: 1}, _ => getRandomUrl(req.query.intentScore)));
+  // allUrlResponses.forEach((urlResponse) => {
+  //   items.push({
+  //     link: urlResponse.url,
+  //     title: urlResponse.metaTitle,
+  //     displayLink: urlResponse.hostname,
+  //     snippet: urlResponse.metaDescription
+  //   })
+  // });
+
+  // // Calculate time take/bytes scanned
+  // var totalBytesScanned = 0;
+  // var totalMillisTaken = 0;
+  // allUrlResponses.forEach((urlResponse) => {
+  //   totalMillisTaken += urlResponse.millisTaken;
+  //   totalBytesScanned += urlResponse.bytesScanned;
+  // });
+
+  // var result = {
+  //   searchInformation: {
+  //     totalResults: allUrlResponses.length,
+  //     totalBytesScanned: totalBytesScanned,
+  //     totalMillisTaken: totalMillisTaken
+  //   },  
+  //   items: items
+  // };
+  // res.send(result);
 });
 
 function linearize(x) {
