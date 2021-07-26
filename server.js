@@ -28,7 +28,35 @@ const medFarmUniformEndpoint = 'http://medfarm.fp2.dev:3333/api/randuniform?devi
 // const medFarmUniformEndpoint = 'https://entronet.fp2.dev/api/randuniform?deviceId=QWR4E004';
 const maxResultsPerPage = 10;
 
-const words = require('fs').readFileSync('words/1024words.txt', 'utf-8').toString().split("\n");
+const fs = require('fs');
+const words = fs.readFileSync('words/1024words.txt', 'utf-8').toString().split("\n");
+
+// load all domains
+var domains = [];
+function readLines(input, func) {
+  var remaining = '';
+
+  input.on('data', function(data) {
+    remaining += data;
+    var index = remaining.indexOf('\n');
+    while (index > -1) {
+      var line = remaining.substring(0, index);
+      remaining = remaining.substring(index + 1);
+      func(line);
+      index = remaining.indexOf('\n');
+    }
+  });
+
+  input.on('end', function() {
+    if (remaining.length > 0) {
+      func(remaining);
+    }
+  });
+}
+function func(data) {
+  domains.push(data.replace(/\"/g, ""));
+}
+readLines(fs.createReadStream('ccrawl2021-25-registered-domains.csv'), func);
 
 app.get('/api/get/intent', async (req, res) => {
   // Get the searcher's intent
@@ -79,7 +107,7 @@ app.get('/api/get/url', async (req, res) => {
   let numStages = 10;
   let entropyBytesLen = math.ceil((N * numStages)/8); // byte size of total number of MMI bits to get from the QRNG
   let stddev = math.sqrt(N);
-  let resolution = 3401286407; // total number of crawled URLs to find an index in
+  let resolution = 35906101; // total number of crawled URLs to find an index in
 
   axios
   .get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${entropyBytesLen}`, {responseType: 'arraybuffer'})
@@ -128,81 +156,83 @@ app.get('/api/get/url', async (req, res) => {
     // Interpolate
     // interpolated index = Floor[3.464 x 10^9 * index/(nl^10)
     let interpolatedIdx = math.floor(resolution * index/math.pow(nl, numStages));
-    console.log("interpolatedIdx: " + interpolatedIdx);
-    res.send({index: interpolatedIdx});
+    return interpolatedIdx;
+    // res.send({index: interpolatedIdx});
+  }).then(async index => {
+    var domain = domains[index];
+    console.log(`"domain[${index}]: ${domain}`);
+
+    // Get a random (but potentially - hopefully - mentally influenced!) URL from Common Crawl index on AWS Athena
+    query = `SELECT url_host_name,url FROM "ccindex"."ccindex" TABLESAMPLE BERNOULLI(10.0) WHERE crawl = 'CC-MAIN-2021-25' AND subset = 'warc' AND url_host_registered_domain = '${domain}' LIMIT 1`;
+    console.log(query);
+    var athenaResult = await athenaExpress.query({
+      sql: query,
+      db: athenaDBName,
+      getStats: true 
+    });
+    console.log(athenaResult.Items);
+    return athenaResult;
+  }).then(async athenaResult => {
+    // Get the URL's HTML
+    let title, description;
+    let html = await axios.get(athenaResult.Items[0].url);
+    console.log(athenaResult.Items[0].url);
+    const $ = cheerio.load(html.data);
+    title = $('meta[property="og:title"]').attr('content') || $('title').text() || $('meta[name="title"]').attr('content')
+    console.log("Title:" + title);
+    description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content')
+    console.log("Description:" + description);
+    // const url = $('meta[property="og:url"]').attr('content')
+    // const site_name = $('meta[property="og:site_name"]').attr('content')
+    // const image = $('meta[property="og:image"]').attr('content') || $('meta[property="og:image:url"]').attr('content')
+    // const icon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href')
+    // const keywords = $('meta[property="og:keywords"]').attr('content') || $('meta[name="keywords"]').attr('content')
+    console.log("");
+
+    var items = [];
+    items[0] = {
+      entropy: req.query.intentScore,
+      url: athenaResult.Items[0].url,
+      hostname: athenaResult.Items[0].url_host_name,
+      millisTaken: athenaResult.TotalExecutionTimeInMillis,
+      bytesScanned: athenaResult.DataScannedInBytes,
+      metaTitle: title,
+      metaDescription: description,
+    };
+
+    // // // Get all URLs 
+    // var items = [];
+    // var allUrlResponses = await Promise.all(Array.from({length: 1}, _ => getRandomUrl(req.query.intentScore)));
+    // allUrlResponses.forEach((urlResponse) => {
+    //   items.push({
+    //     link: urlResponse.url,
+    //     title: urlResponse.metaTitle,
+    //     displayLink: urlResponse.hostname,
+    //     snippet: urlResponse.metaDescription
+    //   })
+    // });
+
+    // Calculate time take/bytes scanned
+    var totalBytesScanned = 0;
+    var totalMillisTaken = 0;
+    // allUrlResponses.forEach((urlResponse) => {
+    //   totalMillisTaken += urlResponse.millisTaken;
+    //   totalBytesScanned += urlResponse.bytesScanned;
+    // });
+
+    var result = {
+      searchInformation: {
+        totalResults: /*allUrlResponses.length*/0,
+        totalBytesScanned: totalBytesScanned,
+        totalMillisTaken: totalMillisTaken
+      },  
+      items: items
+    };
+    res.send(result);
   }).catch(error => {
     console.log(error);
     res.send(error);
   });
-
-  // const getRandomUrl = async (intentScore) => {
-  //   // Get a random (but potentially - hopefully - mentally influenced!) URL from Common Crawl index on AWS Athena
-  //   let athenaResult = await athenaExpress.query({
-  //     sql: `SELECT url_host_name,url FROM "ccindex"."ccindex" TABLESAMPLE BERNOULLI(${intentScore}) WHERE crawl = 'CC-MAIN-2021-04' AND subset = 'warc' LIMIT 1`,
-  //     db: athenaDBName,
-  //     getStats: true 
-  //   });
-
-  //   // Get the URL's HTML
-  //   let title, description;
-  //   try {
-  //     let html = await axios.get(athenaResult.Items[0].url);
-  //     console.log(athenaResult.Items[0].url);
-  //     const $ = cheerio.load(html.data);
-  //     title = $('meta[property="og:title"]').attr('content') || $('title').text() || $('meta[name="title"]').attr('content')
-  //     console.log("Title:" + title);
-  //     description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content')
-  //     console.log("Description:" + description);
-  //     // const url = $('meta[property="og:url"]').attr('content')
-  //     // const site_name = $('meta[property="og:site_name"]').attr('content')
-  //     // const image = $('meta[property="og:image"]').attr('content') || $('meta[property="og:image:url"]').attr('content')
-  //     // const icon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href')
-  //     // const keywords = $('meta[property="og:keywords"]').attr('content') || $('meta[name="keywords"]').attr('content')
-  //     console.log("");
-  //   } catch (error) {
-  //     console.log(error);
-  //   }
-
-  //   return {
-  //     entropy: req.query.intentScore,
-  //     url: athenaResult.Items[0].url,
-  //     hostname: athenaResult.Items[0].url_host_name,
-  //     millisTaken: athenaResult.TotalExecutionTimeInMillis,
-  //     bytesScanned: athenaResult.DataScannedInBytes,
-  //     metaTitle: title,
-  //     metaDescription: description,
-  //   };
-  // }
-
-  // // Get all URLs 
-  // var items = [];
-  // var allUrlResponses = await Promise.all(Array.from({length: 1}, _ => getRandomUrl(req.query.intentScore)));
-  // allUrlResponses.forEach((urlResponse) => {
-  //   items.push({
-  //     link: urlResponse.url,
-  //     title: urlResponse.metaTitle,
-  //     displayLink: urlResponse.hostname,
-  //     snippet: urlResponse.metaDescription
-  //   })
-  // });
-
-  // // Calculate time take/bytes scanned
-  // var totalBytesScanned = 0;
-  // var totalMillisTaken = 0;
-  // allUrlResponses.forEach((urlResponse) => {
-  //   totalMillisTaken += urlResponse.millisTaken;
-  //   totalBytesScanned += urlResponse.bytesScanned;
-  // });
-
-  // var result = {
-  //   searchInformation: {
-  //     totalResults: allUrlResponses.length,
-  //     totalBytesScanned: totalBytesScanned,
-  //     totalMillisTaken: totalMillisTaken
-  //   },  
-  //   items: items
-  // };
-  // res.send(result);
 });
 
 function linearize(x) {
@@ -351,5 +381,5 @@ app.get('/api/get/searchterms', async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Example app listening at http://localhost:${port}`)
+  console.log(`mindfind-backend listening at http://localhost:${port}`)
 });
