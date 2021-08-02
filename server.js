@@ -235,6 +235,72 @@ app.get('/api/get/url', async (req, res) => {
   });
 });
 
+app.get('/api/get/intentsuggestions', async (req, res) => {
+  let nl = 9; // Number of Lines multiplier
+  let N = 5185; // number of steps in a random walk per stage: (8 * nl)^2 +1 to make the number odd
+  let numStages = 10;
+  let entropyBytesLen = math.ceil((N * numStages)/8); // byte size of total number of MMI bits to get from the QRNG
+  let stddev = math.sqrt(N);
+  let resolution = intentSuggestions.length; // total number of crawled URLs to find an index in
+
+  axios
+  .get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${entropyBytesLen}`, {responseType: 'arraybuffer'})
+  .then(response => {
+    let totalEntropy = bitarray.fromBuffer(response.data);
+
+    // Bit at a time, count the number of 1 bits per stage
+    let numOnesPerStage = new Array(numStages).fill(0);
+    let stage = 0;
+    for (let i = 0; i < totalEntropy.length - 1; i++) {
+      if (totalEntropy.get(i) === 1) {
+        numOnesPerStage[stage] = numOnesPerStage[stage] + 1; 
+      }
+      if (stage < numStages - 1) {
+        stage++;
+      } else {
+        stage = 0;
+      }
+    }
+
+    ps = [];
+    for (let j = 0; j < numStages; j++) {
+      let numOnes = numOnesPerStage[j];
+
+      // Calculate the terminal points' coordinates in random walk
+      // 𝐶𝑇 =(2 × 𝑜𝑛𝑒𝑠)−𝑁
+      let ct = (2 * numOnes) - N;
+
+      // Calculate z-score for the terminal coordinate
+      // standard deviation (SD) = √𝑁
+      // 𝑧 − 𝑠𝑐𝑜𝑟𝑒𝑠 = (𝑥, 𝑦)/√𝑁
+      let z = ct / stddev;
+
+      // Calculate the cumulative normal distribution probabilities (p) from z-score
+      // (The z-scores of each coordinate can be converted to uniform variates by a simple inverse approximation.)
+      let p = linearize(z);
+      ps[j] = p;
+    }
+  
+    // Generate the index
+    let index = 0;
+    for (let k = 0, l = 9; k < numStages; k++, l--) {
+      index += math.pow(nl, l) * math.floor(nl * ps[k]);
+    }
+
+    // Interpolate
+    // interpolated index = Floor[3.464 x 10^9 * index/(nl^10)
+    let interpolatedIdx = math.floor(resolution * index/math.pow(nl, numStages));
+    return interpolatedIdx;
+  }).then(async index => {
+    var intentSuggestion = intentSuggestions[index];
+    console.log(`"intentSuggestions[${index}]: ${intentSuggestion}`);
+    res.send(intentSuggestion);
+  }).catch(error => {
+    console.log(error);
+    res.send(error);
+  });
+});
+
 function linearize(x) {
   // constants
   let c1 = 2.506628275;
