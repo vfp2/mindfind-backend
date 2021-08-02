@@ -29,7 +29,7 @@ const medFarmUniformEndpoint = 'http://medfarm.fp2.dev:3333/api/randuniform?devi
 const maxResultsPerPage = 10;
 
 const fs = require('fs');
-const words = fs.readFileSync('words/1024words.txt', 'utf-8').toString().split("\n");
+const words = fs.readFileSync('corpora/1024words.txt', 'utf-8').toString().split("\n");
 
 // load all domains
 var domains = [];
