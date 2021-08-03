@@ -57,7 +57,7 @@ function readLines(input, func) {
 function func(data) {
   domains.push(data.replace(/\"/g, ""));
 }
-readLines(fs.createReadStream('ccrawl2021-25-registered-domains.csv'), func);
+readLines(fs.createReadStream('corpora/ccrawl2021-25-registered-domains.csv'), func);
 
 app.get('/api/get/intent', async (req, res) => {
   // Get the searcher's intent
@@ -158,77 +158,49 @@ app.get('/api/get/url', async (req, res) => {
     // interpolated index = Floor[3.464 x 10^9 * index/(nl^10)
     let interpolatedIdx = math.floor(resolution * index/math.pow(nl, numStages));
     return interpolatedIdx;
-    // res.send({index: interpolatedIdx});
   }).then(async index => {
     var domain = domains[index];
-    console.log(`"domain[${index}]: ${domain}`);
 
     // Get a random (but potentially - hopefully - mentally influenced!) URL from Common Crawl index on AWS Athena
-    query = `SELECT url_host_name,url FROM "ccindex"."ccindex" TABLESAMPLE BERNOULLI(10.0) WHERE crawl = 'CC-MAIN-2021-25' AND subset = 'warc' AND url_host_registered_domain = '${domain}' LIMIT 1`;
-    console.log(query);
+    query = `SELECT url_host_name,url FROM "ccindex"."ccindex" WHERE crawl = 'CC-MAIN-2021-25' AND subset = 'warc' AND url_host_registered_domain = '${domain}' LIMIT 1`;
     var athenaResult = await athenaExpress.query({
       sql: query,
       db: athenaDBName,
       getStats: true 
     });
-    console.log(athenaResult.Items);
+
     return athenaResult;
   }).then(async athenaResult => {
     // Get the URL's HTML
     let title, description;
     let html = await axios.get(athenaResult.Items[0].url);
-    console.log(athenaResult.Items[0].url);
     const $ = cheerio.load(html.data);
     title = $('meta[property="og:title"]').attr('content') || $('title').text() || $('meta[name="title"]').attr('content')
-    console.log("Title:" + title);
     description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content')
-    console.log("Description:" + description);
     // const url = $('meta[property="og:url"]').attr('content')
     // const site_name = $('meta[property="og:site_name"]').attr('content')
     // const image = $('meta[property="og:image"]').attr('content') || $('meta[property="og:image:url"]').attr('content')
     // const icon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href')
     // const keywords = $('meta[property="og:keywords"]').attr('content') || $('meta[name="keywords"]').attr('content')
-    console.log("");
 
     var items = [];
     items[0] = {
-      entropy: req.query.intentScore,
-      url: athenaResult.Items[0].url,
-      hostname: athenaResult.Items[0].url_host_name,
-      millisTaken: athenaResult.TotalExecutionTimeInMillis,
-      bytesScanned: athenaResult.DataScannedInBytes,
-      metaTitle: title,
-      metaDescription: description,
+      link: athenaResult.Items[0].url,
+      title: title,
+      displayLink: athenaResult.Items[0].url_host_name,
+      snippet: description
     };
 
-    // // // Get all URLs 
-    // var items = [];
-    // var allUrlResponses = await Promise.all(Array.from({length: 1}, _ => getRandomUrl(req.query.intentScore)));
-    // allUrlResponses.forEach((urlResponse) => {
-    //   items.push({
-    //     link: urlResponse.url,
-    //     title: urlResponse.metaTitle,
-    //     displayLink: urlResponse.hostname,
-    //     snippet: urlResponse.metaDescription
-    //   })
-    // });
-
-    // Calculate time take/bytes scanned
-    var totalBytesScanned = 0;
-    var totalMillisTaken = 0;
-    // allUrlResponses.forEach((urlResponse) => {
-    //   totalMillisTaken += urlResponse.millisTaken;
-    //   totalBytesScanned += urlResponse.bytesScanned;
-    // });
 
     var result = {
       searchInformation: {
-        totalResults: /*allUrlResponses.length*/0,
-        totalBytesScanned: totalBytesScanned,
-        totalMillisTaken: totalMillisTaken
+        totalResults: 1,
+        totalBytesScanned:  athenaResult.DataScannedInBytes,
+        totalMillisTaken: athenaResult.TotalExecutionTimeInMillis
       },  
       items: items
     };
+    console.log(result)
     res.send(result);
   }).catch(error => {
     console.log(error);
@@ -294,7 +266,7 @@ app.get('/api/get/intentsuggestions', async (req, res) => {
     return interpolatedIdx;
   }).then(async index => {
     var intentSuggestion = intentSuggestions[index];
-    console.log(`"intentSuggestions[${index}]: ${intentSuggestion}`);
+    console.log(`intentSuggestions[${index}]: ${intentSuggestion}`);
     res.send(intentSuggestion);
   }).catch(error => {
     console.log(error);
