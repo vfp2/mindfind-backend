@@ -205,6 +205,8 @@ app.get('/api/get/url', async (req, res) => {
     console.log(result)
     res.send(result);
   }).catch(error => {
+    console.log(result);
+
     var items = [];
     items[0] = {
       link: error.config.url,
@@ -222,7 +224,6 @@ app.get('/api/get/url', async (req, res) => {
       items: items
     };
 
-    console.log(result);
     res.send(result);
   });
 });
