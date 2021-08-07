@@ -205,8 +205,25 @@ app.get('/api/get/url', async (req, res) => {
     console.log(result)
     res.send(result);
   }).catch(error => {
-    console.log(error);
-    res.send(error);
+    var items = [];
+    items[0] = {
+      link: error.config.url,
+      title: error.config.url,
+      displayLink: error.request.host,
+      snippet: error.message
+    };
+
+    var result = {
+      searchInformation: {
+        totalResults: 0,
+        totalBytesScanned:  0,
+        totalMillisTaken: 0
+      },  
+      items: items
+    };
+
+    console.log(result);
+    res.send(result);
   });
 });
 
