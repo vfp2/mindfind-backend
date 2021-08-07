@@ -57,6 +57,8 @@ function readLines(input, func) {
 function func(data) {
   domains.push(data.replace(/\"/g, ""));
 }
+// ccrawl2021-25-registered-domains.cs is too big for non-lfs git so download it here:
+// https://drive.google.com/file/d/1Mq0P2jsFcfZsLyT2Cw9Jc6g2lFPNUi9M/view?usp=sharing
 readLines(fs.createReadStream('corpora/ccrawl2021-25-registered-domains.csv'), func);
 
 app.get('/api/get/intent', async (req, res) => {
