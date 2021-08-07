@@ -101,13 +101,14 @@ app.get('/api/get/intent', async (req, res) => {
 });
 
 app.get('/api/get/url', async (req, res) => {
-  // Implement Scott Wilber's multi-stage MMI index generator algorithm to get an index in the 3.4 billion
-  // Common Crawl's URL index of all crawled URLs on the web.
+  // Implement Scott Wilber's multi-stage MMI index generator algorithm to get an index in the ~39 million unique
+  // registered domain names in the Common Crawl's URL index from June 2021.
+  // Originally I was aiming for searching 3.4 billion 
   // https://forum.fp2.dev/t/collaborative-project-idea-mindfind-mental-google-search/62/17
 
   let nl = 9; // Number of Lines multiplier
-  let N = 5185; // number of steps in a random walk per stage: (8 * nl)^2 +1 to make the number odd
-  let numStages = 10;
+  let N = 4999; // number of steps in a random walk per stage: (8 * nl)^2 +1 to make the number odd
+  let numStages = nl + 1; // TODO: confirm how this differs to nl...
   let entropyBytesLen = math.ceil((N * numStages)/8); // byte size of total number of MMI bits to get from the QRNG
   let stddev = math.sqrt(N);
   let resolution = 35906101; // total number of crawled URLs to find an index in
@@ -193,7 +194,6 @@ app.get('/api/get/url', async (req, res) => {
       snippet: description
     };
 
-
     var result = {
       searchInformation: {
         totalResults: 1,
@@ -212,8 +212,8 @@ app.get('/api/get/url', async (req, res) => {
 
 app.get('/api/get/intentsuggestions', async (req, res) => {
   let nl = 9; // Number of Lines multiplier
-  let N = 5185; // number of steps in a random walk per stage: (8 * nl)^2 +1 to make the number odd
-  let numStages = 10;
+  let N = 6671; // number of steps in a random walk per stage: (8 * nl)^2 +1 to make the number odd
+  let numStages = nl + 1; // TODO: confirm how this differs to nl...
   let entropyBytesLen = math.ceil((N * numStages)/8); // byte size of total number of MMI bits to get from the QRNG
   let stddev = math.sqrt(N);
   let resolution = intentSuggestions.length; // total number of crawled URLs to find an index in
