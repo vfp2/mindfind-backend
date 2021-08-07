@@ -267,7 +267,25 @@ app.get('/api/get/intentsuggestions', async (req, res) => {
     let interpolatedIdx = math.floor(resolution * index/math.pow(nl, numStages));
     return interpolatedIdx;
   }).then(async index => {
-    var intentSuggestion = intentSuggestions[index];
+    var intentSuggestion = intentSuggestions[index]
+      + `<br>\n`
+      + `<br>\n`
+      + `Indexes above and below:<br>\n`
+      + `<br>\n`
+      + `-1: ${intentSuggestions[index-1]}<br>\n`
+      + `-2: ${intentSuggestions[index-2]}<br>\n`
+      + `-3: ${intentSuggestions[index-3]}<br>\n`
+      + `-4: ${intentSuggestions[index-4]}<br>\n`
+      + `-5: ${intentSuggestions[index-5]}<br>\n`
+      + `<br>\n`
+      + `+1: ${intentSuggestions[index+1]}<br>\n`
+      + `+2: ${intentSuggestions[index+2]}<br>\n`
+      + `+3: ${intentSuggestions[index+3]}<br>\n`
+      + `+4: ${intentSuggestions[index+4]}<br>\n`
+      + `+5: ${intentSuggestions[index+5]}<br>\n`
+      + `<br>\n`
+      + `<a href="/">Go back</a>`
+      ;
     console.log(`intentSuggestions[${index}]: ${intentSuggestion}`);
     res.send(intentSuggestion);
   }).catch(error => {
