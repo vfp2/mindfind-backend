@@ -162,15 +162,26 @@ app.get('/api/get/url', async (req, res) => {
     let interpolatedIdx = math.floor(resolution * index/math.pow(nl, numStages));
     return interpolatedIdx;
   }).then(async index => {
-    var domain = domains[index];
+    var bumper = 0, loop = true;
 
     // Get a random (but potentially - hopefully - mentally influenced!) URL from Common Crawl index on AWS Athena
-    query = `SELECT url_host_name,url FROM "ccindex"."ccindex" WHERE crawl = 'CC-MAIN-2021-25' AND subset = 'warc' AND url_host_registered_domain = '${domain}' LIMIT 1`;
-    var athenaResult = await athenaExpress.query({
-      sql: query,
-      db: athenaDBName,
-      getStats: true 
-    });
+    while (loop) {
+      var domain = domains[index + bumper];
+      query = `SELECT url_host_name,url FROM "ccindex"."ccindex" WHERE crawl = 'CC-MAIN-2021-25' AND subset = 'warc' AND url_host_registered_domain = '${domain}' AND content_languages LIKE '%eng%' LIMIT 1`;
+      var athenaResult = await athenaExpress.query({
+        sql: query,
+        db: athenaDBName,
+        getStats: true 
+      });
+
+      if (athenaResult.Items.length == 0) {
+        // hack to find domain with English
+        console.log("bumping on " + domain);
+        bumper++;
+      } else {
+        loop = false;
+      }
+    }
 
     return athenaResult;
   }).then(async athenaResult => {
