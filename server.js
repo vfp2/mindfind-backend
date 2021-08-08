@@ -167,7 +167,7 @@ app.get('/api/get/url', async (req, res) => {
     // Get a random (but potentially - hopefully - mentally influenced!) URL from Common Crawl index on AWS Athena
     while (loop) {
       var domain = domains[index + bumper];
-      query = `SELECT url_host_name,url FROM "ccindex"."ccindex" WHERE crawl = 'CC-MAIN-2021-25' AND subset = 'warc' AND url_host_registered_domain = '${domain}' AND content_languages LIKE '%eng%' LIMIT 1`;
+      query = `SELECT url_host_name,url FROM "ccindex"."ccindex" WHERE crawl = 'CC-MAIN-2021-25' AND subset = 'warc' AND url_host_registered_domain = '${domain}' AND content_languages = 'eng' LIMIT 1`;
       var athenaResult = await athenaExpress.query({
         sql: query,
         db: athenaDBName,
