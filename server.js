@@ -19,7 +19,7 @@ const app = express()
 const port = 3945
 const athenaExpressConfig = {
 	aws,
-	s3: "s3://mindfind-commoncrawl",
+	s3: "s3://mindfind-athena-queries",
   getStats: true
 };
 const athenaExpress = new AthenaExpress(athenaExpressConfig);
