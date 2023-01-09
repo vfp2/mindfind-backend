@@ -216,15 +216,28 @@ app.get('/api/get/url', async (req, res) => {
     console.log(result)
     res.send(result);
   }).catch(error => {
+    console.log("error:");
+    console.log(error);
+    console.log("result:");
     console.log(result);
 
     var items = [];
-    items[0] = {
-      link: error.config.url,
-      title: error.config.url,
-      displayLink: error.request.host,
-      snippet: error.message
-    };
+    try {
+        items[0] = {
+          link: error.config.url,
+          title: error.config.url,
+          displayLink: error.request.host,
+          snippet: error.message
+        };
+    } catch (itemsError) {
+        console.log(itemsError);
+	items[0] = {
+	    link: "",
+	    title: "Unknown Error",
+            displayLink: "",
+	    snippet: error.message
+	};
+    }
 
     var result = {
       searchInformation: {
@@ -452,7 +465,7 @@ app.get('/api/get/searchterms', async (req, res) => {
     });
   } else {
     var gets = [
-      axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E001&length=${entropyBytesLen}`, {responseType: 'arraybuffer'}),
+      //axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E001&length=${entropyBytesLen}`, {responseType: 'arraybuffer'}),
       axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E002&length=${entropyBytesLen}`, {responseType: 'arraybuffer'}),
       axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4E004&length=${entropyBytesLen}`, {responseType: 'arraybuffer'}),
       // axios.get(`http://medfarm.fp2.dev:3333/api/randbytes?deviceId=QWR4X003&length=${entropyBytesLen}`, {responseType: 'arraybuffer'})
